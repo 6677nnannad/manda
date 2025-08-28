@@ -1,0 +1,66 @@
+// /api/delete.js
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== 'DELETE') {
+    return res.status(405).json({ error: '只允许DELETE请求' });
+  }
+
+  try {
+    const { type, filename, sha } = req.body;
+
+    if (!type || !filename || !sha) {
+      return res.status(400).json({ error: '缺少必要参数: type, filename 或 sha' });
+    }
+
+    const folder = type === 'image' ? 'img' : 'txa';
+    const apiUrl = `https://api.github.com/repos/6677nnannad/manda/contents/${folder}/${filename}`;
+    
+    const authToken = process.env.GITHUB_TOKEN;
+
+    if (!authToken) {
+      return res.status(500).json({ error: '服务器配置错误: 缺少GitHub Token' });
+    }
+
+    const githubResponse = await fetch(apiUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `token ${authToken}`,
+        'User-Agent': 'Manda-App',
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: `删除${type === 'image' ? '图片' : '文本'}: ${filename}`,
+        sha: sha // GitHub 需要 sha 值来确认删除的文件
+      })
+    });
+
+    const githubData = await githubResponse.json();
+
+    if (!githubResponse.ok) {
+      console.error('GitHub API错误:', githubData);
+      return res.status(githubResponse.status).json({ 
+        error: '从GitHub删除文件失败',
+        details: githubData 
+      });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: '删除成功!'
+    });
+
+  } catch (error) {
+    console.error('服务器错误:', error);
+    res.status(500).json({ error: '内部服务器错误', details: error.message });
+  }
+}
